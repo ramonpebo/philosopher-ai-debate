@@ -28,7 +28,7 @@ class PhilosopherAgent:
         }
         phase_instruction = phase_descriptions.get(phase, "")
 
-        prompt = (
+        agent_context = (
             f"You are {self.name}, an expert philosopher. "
             f"Your arguments must be based entirely on {self.philosophy_focus}. "
             "You are debating against an opponent. "
@@ -44,23 +44,24 @@ class PhilosopherAgent:
 
         if phase == "opening":
             # Opening phase usually doesn't have transcript or opponent argument
-            return prompt
+            return agent_context
         if phase == "rebuttal":
             # Add transcript and opponent's last argument in prompt for rebuttal & closing
-            prompt += f"\nFull transcript so far:\n{transcript}\nOpponent's last argument: {opponent_argument}"
-            return prompt
+            agent_context += f"\nFull transcript so far:\n{transcript}\nOpponent's last argument: {opponent_argument}"
+            return agent_context
         else:
             # For closing, just include the full transcript
-            prompt += f"\nFull transcript so far:\n{transcript}"
-            return prompt
+            agent_context += f"\nFull transcript so far:\n{transcript}"
+            return agent_context
 
     # Set the agent for the current phase
     def set_phase(self, phase: str):
-        prompt = self.build_prompt(phase)
+        agent_context = self.build_prompt(phase)
         self.agent = Agent(
             self.model,
+            retries=3,
             output_type=PhilosopherResponse,
-            system_prompt=prompt
+            system_prompt=agent_context
         )
         self.phase = phase
 
