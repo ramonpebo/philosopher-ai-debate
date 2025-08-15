@@ -11,9 +11,12 @@ class PhilosopherResponse(BaseModel):
 class PhilosopherAgent:
     """A philosopher agent that can debate in different phases."""
 
-    def __init__(self, name: str, philosophy_focus: str, ollama_model: str):
+    def __init__(self, name: str, philosophy_focus: str, ollama_model: str, opponent_name: str):
+
         self.name = name
         self.philosophy_focus = philosophy_focus
+        self.opponent_name = opponent_name
+
         self.model = OpenAIModel(
             model_name=ollama_model, provider=OpenAIProvider(base_url='http://localhost:11434/v1')
         )
@@ -31,28 +34,21 @@ class PhilosopherAgent:
         agent_context = (
             f"You are {self.name}, an expert philosopher. "
             f"Your arguments must be based entirely on {self.philosophy_focus}. "
-            "You are debating against an opponent. "
+            f"You are debating against {self.opponent_name}. "
             f"{phase_instruction} "
-            "You will receive the full debate transcript so far, and also the opponent's latest argument (if any). "
-            "Your task is to respond directly and keep consistency with your philosophy. "
-            "Do not repeat points unnecessarily. Use quotes or references when appropriate. "
+            "Do not repeat points unnecessarily. Use quotes or references when appropriate. Respond to your opponent by name."
             "Keep your arguments in a single paragraph. "
             "Respond ONLY in JSON with one field: 'argument'. "
             "Do NOT include any text outside the JSON. Example: {\"argument\": \"your argument here\"}. "
-            "If you do not follow this format, your answer will be rejected and you will be asked again. "
+            "If you do not follow this format, your answer will be rejected and you will be asked again."
         )
 
-        if phase == "opening":
-            # Opening phase usually doesn't have transcript or opponent argument
-            return agent_context
-        if phase == "rebuttal":
-            # Add transcript and opponent's last argument in prompt for rebuttal & closing
-            agent_context += f"\nFull transcript so far:\n{transcript}\nOpponent's last argument: {opponent_argument}"
-            return agent_context
-        else:
-            # For closing, just include the full transcript
+        if phase in ["rebuttal", "closing"]:
             agent_context += f"\nFull transcript so far:\n{transcript}"
-            return agent_context
+            if phase == "rebuttal":
+                agent_context += f"\nOpponent's last argument: {opponent_argument}"
+
+        return agent_context
 
     # Set the agent for the current phase
     def set_phase(self, phase: str):

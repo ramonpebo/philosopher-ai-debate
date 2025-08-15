@@ -1,4 +1,4 @@
-from .agent import PhilosopherAgent
+from .philosopher import PhilosopherAgent
 
 class DebateManager:
     """Manages a debate between two philosophers with multiple phases."""

@@ -14,7 +14,13 @@ class ModeratorSummaryResponse(BaseModel):
 class ModeratorAgent:
     """A moderator agent that orchestrates the debate dynamically and provides inputs."""
 
-    def __init__(self, ollama_model: str):
+    def __init__(self, ollama_model: str, philosopher_a_name: str, philosopher_a_context: str, philosopher_b_name: str, philosopher_b_context: str):
+
+        self.philosopher_a_name = philosopher_a_name
+        self.philosopher_b_name = philosopher_b_name
+        self.philosopher_a_context = philosopher_a_context
+        self.philosopher_b_context = philosopher_b_context
+
         self.model = OpenAIModel(
             model_name= ollama_model, provider=OpenAIProvider(base_url='http://localhost:11434/v1')
         )
@@ -25,9 +31,10 @@ class ModeratorAgent:
             output_type=ModeratorResponse,
             system_prompt=(
                 "You are a debate moderator. Your role is to manage the debate between two philosophers. "
+                f"The philosophers are {self.philosopher_a_name} (philosopher_a) who speacialises in {self.philosopher_a_context} and {self.philosopher_b_name} (philosopher_b) who speacialises in {self.philosopher_b_context}."
                 "You will receive the current transcript and the last arguments from both philosophers. "
                 "Analyze the debate and decide the next action. Possible actions include: "
-                "'ask_philosopher_a', 'ask_philosopher_b', 'move_to_closing'. "
+                f"'ask_philosopher_a', 'ask_philosopher_b', 'move_to_closing'. "
                 "Respond ONLY in JSON with one field: 'action'."
             )
         )
@@ -39,8 +46,8 @@ class ModeratorAgent:
             system_prompt=(
                 "You are a debate moderator. Summarize the following argument in one or two sentences for the audience. "
                 "Then provide commentary to make the debate more engaging. "
-                "Finally, suggest points for the next philosopher's rebuttal. "
-                "Respond ONLY in JSON with three fields: 'summary', 'commentary', and 'rebuttal_points'."
+                f"The philosophers are {self.philosopher_a_name} and {self.philosopher_b_name}. "
+                "Respond ONLY in JSON with three fields: 'summary' and 'commentary'."
             )
         )
 
@@ -50,6 +57,7 @@ class ModeratorAgent:
             output_type=str,  # The introduction will be plain text
             system_prompt=(
                 "You are a debate moderator. Create an engaging and dynamic introduction for a debate. "
+                f"The philosophers are {self.philosopher_a_name} and {self.philosopher_b_name}. "
                 "The introduction should:\n"
                 "1. Present the topic in an exciting and thought-provoking way.\n"
                 "2. Introduce the two philosophers with flair, highlighting their expertise and perspectives.\n"
@@ -76,14 +84,10 @@ class ModeratorAgent:
     def introduce_debate(self, topic: str, philosopher_a_name: str, philosopher_a_context: str, philosopher_b_name: str, philosopher_b_context: str) -> str:
         """Generates a dynamic and engaging introduction for the debate using the LLM."""
         prompt = (
-            f"You are a debate moderator. Create an engaging and dynamic introduction for a debate. "
             f"The topic of the debate is: '{topic}'. "
-            f"Introduce the two philosophers:\n"
-            f"1. {philosopher_a_name}, who specializes in {philosopher_a_context}.\n"
-            f"2. {philosopher_b_name}, who specializes in {philosopher_b_context}.\n"
-            f"Make the introduction exciting and set expectations for the audience. "
-            f"Respond with a single paragraph."
+            f"Introduce the two philosophers by name and area of expertise.\n"
         )
+
         try:
             response = self.introduction_agent.run_sync(prompt)
             return response.output  # Assuming the LLM returns a plain text introduction
@@ -95,11 +99,11 @@ class ModeratorAgent:
                 f"Let the debate begin!"
             )
         
-    def provide_input(self, action: str) -> str:
+    def provide_input(self, action: str, philosopher_a_name: str, philosopher_b_name: str) -> str:
         """Generates a moderator input explaining the next step."""
         inputs = {
-            "ask_philosopher_a": "Now, Philosopher A will present their argument.",
-            "ask_philosopher_b": "Next, Philosopher B will respond with their argument.",
+            "ask_philosopher_a": f"Now, {philosopher_a_name} will present their argument.",
+            "ask_philosopher_b": f"Now, {philosopher_b_name} will present their argument.",
             "move_to_closing": "We are moving to the closing statements. Each philosopher will summarize their position.",
         }
         return inputs.get(action, "The debate is progressing.")
