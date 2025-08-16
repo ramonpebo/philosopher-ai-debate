@@ -5,20 +5,22 @@ from .moderator import ModeratorAgent
 class DebateManager:
     """Manages a debate dynamically based on the moderator's decisions."""
 
-    def __init__(self, topic: str, philosopher_a_name: str, philosopher_a_context: str, philosopher_b_name: str, philosopher_b_context: str, max_rounds: int = 6, transcript_file: str = None):
+    def __init__(self, topic: str, philosophers: list, max_rounds: int = 6, transcript_file: str = None):
+        
         self.topic = topic
+        self.philosophers = philosophers
         self.transcript = []
-        self.last_argument_a = ""
-        self.last_argument_b = ""
-        self.round_count = 0  # Track the number of rounds
-        self.max_rounds = max_rounds  # Maximum number of rounds
-        self.transcript_file = transcript_file  # Assign transcript_file to an instance attribute
+        self.last_arguments = {philosopher.name: "" for philosopher in philosophers}
+        self.speakers_order = ""
+        self.round_count = 0
+        self.max_rounds = max_rounds
+        self.transcript_file = transcript_file
 
-        # Initialize philosopher agents with their names and contexts
-        self.philosopher_a = PhilosopherAgent(philosopher_a_name, philosopher_a_context, 'gpt-oss', philosopher_b_name)
-        self.philosopher_b = PhilosopherAgent(philosopher_b_name, philosopher_b_context, 'gpt-oss', philosopher_a_name)
-        # Initialize the moderator agent
-        self.moderator = ModeratorAgent('gpt-oss', philosopher_a_name, philosopher_a_context, philosopher_b_name, philosopher_b_context)
+        # Initialize the moderator agent with all philosophers
+        self.moderator = ModeratorAgent(
+            ollama_model='gpt-oss',
+            philosophers=philosophers
+        )
 
     def save_transcript(self):
         """Saves the transcript to a file if a file path is provided."""
@@ -34,111 +36,97 @@ class DebateManager:
         """Runs the debate dynamically based on the moderator's decisions."""
 
         # Moderator introduces the debate
-        introduction = self.moderator.introduce_debate(
-            topic=self.topic,
-            philosopher_a_name=self.philosopher_a.name,
-            philosopher_a_context=self.philosopher_a.philosophy_focus,
-            philosopher_b_name=self.philosopher_b.name,
-            philosopher_b_context=self.philosopher_b.philosophy_focus
-        )
+        introduction = self.moderator.introduce_debate(self.topic)
         print(f"Moderator: {introduction}")
         self.transcript.append(f"Moderator: {introduction}\n")
 
         print(f"\n--- Debate Topic: {self.topic} ---\n")
 
-        # Set initial phase for philosophers
-        self.philosopher_a.set_phase("opening")
-        self.philosopher_b.set_phase("opening")
-
-        # Philosopher A's opening statement
-        opening_a = self.philosopher_a.generate_argument()
-        self.transcript.append(f"{self.philosopher_a.name} (Opening): {opening_a}\n")
-        print(f"{self.philosopher_a.name} - Opening Statement:", opening_a)
-
-        # Philosopher B's opening statement
-        opening_b = self.philosopher_b.generate_argument()
-        self.transcript.append(f"{self.philosopher_b.name} (Opening): {opening_b}\n")
-        print(f"{self.philosopher_b.name} - Opening Statement:", opening_b)
+        # Opening statements for all philosophers
+        for philosopher in self.philosophers:
+            philosopher.set_phase("opening")
+            opening_statement = philosopher.generate_argument()
+            self.last_arguments[philosopher.name] = opening_statement
+            self.speakers_order += f"{philosopher.name}, "
+            print("Speakers Order:", self.speakers_order)
+            self.transcript.append(f"{philosopher.name} (Opening): {opening_statement}\n")
+            print(f"{philosopher.name} - Opening Statement:", opening_statement)
+            
 
         # Main debate rounds
         print("\n--- Main Debate ---")
-        self.philosopher_a.set_phase("rebuttal")
-        self.philosopher_b.set_phase("rebuttal")
+
+        for philosopher in self.philosophers:
+            # Set rebuttal phase for each philosopher
+            philosopher.set_phase("rebuttal")
 
         while True:
             # Check if the maximum number of rounds has been reached
-            if self.round_count >= self.max_rounds:
+            if self.round_count > self.max_rounds:
                 print("\n--- Maximum Rounds Reached ---")
-                action = "move_to_closing"
+                break
             else:
                 # Ask the moderator for the next action
                 action = self.moderator.decide_next_action(
-                    transcript="".join(self.transcript),
-                    last_argument_a=self.last_argument_a,
-                    last_argument_b=self.last_argument_b
+                    last_arguments=self.last_arguments,
+                    speakers_order=self.speakers_order
                 )
 
-            # Moderator analyzes the last argument
-            if action == "ask_philosopher_a" and self.last_argument_b:
-                analysis = self.moderator.analyze_argument(self.last_argument_b)
-                summary = f"Moderator Summary of {self.philosopher_b.name}'s Argument: {analysis['summary']}"
-                commentary = f"Moderator Commentary: {analysis['commentary']}"
-                print(summary)
-                print(commentary)
-                self.transcript.append(f"Moderator: {summary}\n")
-                self.transcript.append(f"Moderator: {commentary}\n")
-            elif action == "ask_philosopher_b" and self.last_argument_a:
-                analysis = self.moderator.analyze_argument(self.last_argument_a)
-                summary = f"Moderator Summary of {self.philosopher_a.name}'s Argument: {analysis['summary']}"
-                commentary = f"Moderator Commentary: {analysis['commentary']}"
-                print(summary)
-                print(commentary)
-                self.transcript.append(f"Moderator: {summary}\n")
-                self.transcript.append(f"Moderator: {commentary}\n")
+                # Moderator provides input on the next action
+                moderator_input = self.moderator.provide_input(action)
+                print(f"Moderator: {moderator_input}")
+                self.transcript.append(f"Moderator: {moderator_input}\n")
 
-            # Moderator provides input
-            moderator_input = self.moderator.provide_input(action, self.philosopher_a.name, self.philosopher_b.name)
-            print(f"Moderator: {moderator_input}")
-            self.transcript.append(f"Moderator: {moderator_input}\n")
+                if action == "move_to_closing":
+                    break
 
-            if action == "ask_philosopher_a":
-                # Ask Philosopher A for an argument
-                arg_a = self.philosopher_a.generate_argument(
-                    transcript="".join(self.transcript),
-                    opponent_argument=self.last_argument_b
-                )
-                self.transcript.append(f"{self.philosopher_a.name}: {arg_a}\n")
-                self.last_argument_a = arg_a
-                print(f"{self.philosopher_a.name}:", arg_a)
-                self.round_count += 1  # Increment the round count
+                # Philosopher selected by the moderator provides an argument
+                if action.startswith("ask_philosopher_"):
+                    selected_philosopher_name = action.replace("ask_philosopher_", "")
+                    selected_philosopher = next(
+                        (p for p in self.philosophers if p.name == selected_philosopher_name), None
+                    )
+                    print(f"Selected Philosopher: {selected_philosopher_name}")
 
-            elif action == "ask_philosopher_b":
-                # Ask Philosopher B for an argument
-                arg_b = self.philosopher_b.generate_argument(
-                    transcript="".join(self.transcript),
-                    opponent_argument=self.last_argument_a
-                )
-                self.transcript.append(f"{self.philosopher_b.name}: {arg_b}\n")
-                self.last_argument_b = arg_b
-                print(f"{self.philosopher_b.name}:", arg_b)
-                self.round_count += 1  # Increment the round count
+                    if selected_philosopher:
+                        # Combine arguments from all opponents
+                        opponent_arguments = "\n".join(
+                            f"{opponent_name}: {self.last_arguments[opponent_name]}" for opponent_name in selected_philosopher.opponents
+                        )
 
-            elif action == "move_to_closing":
-                # Combine closing statements and end debate
-                print("\n--- Closing Statements ---")
-                self.philosopher_a.set_phase("closing")
-                self.philosopher_b.set_phase("closing")
+                        # Generate the argument
+                        argument = selected_philosopher.generate_argument(
+                            opponents_argument=opponent_arguments
+                        )
 
-                arg_a = self.philosopher_a.generate_argument(transcript="".join(self.transcript))
-                self.transcript.append(f"{self.philosopher_a.name} (Closing): {arg_a}\n")
-                print(f"{self.philosopher_a.name} - Closing Statement:", arg_a)
+                        self.transcript.append(f"{selected_philosopher.name}: {argument}\n")
+                        self.last_arguments[selected_philosopher.name] = argument
+                        self.speakers_order += f"{selected_philosopher.name}, "
+                        print("Speakers Order:", self.speakers_order)
+                        print(f"{selected_philosopher.name}:", argument)
 
-                arg_b = self.philosopher_b.generate_argument(transcript="".join(self.transcript))
-                self.transcript.append(f"{self.philosopher_b.name} (Closing): {arg_b}\n")
-                print(f"{self.philosopher_b.name} - Closing Statement:", arg_b)
+                        # Provide the argument to the moderator for analysis
+                        analysis = self.moderator.analyze_argument(selected_philosopher.name, argument)
+                        print(f"Moderator Summary of {selected_philosopher.name}'s Argument:", analysis['summary'])
+                        print(f"Moderator Commentary of {selected_philosopher.name}'s Argument:", analysis['commentary'])
+                        self.transcript.append(f"Moderator: {analysis['summary']}\n")
+                        self.transcript.append(f"Moderator: {analysis['commentary']}\n")
 
-                print("\n--- Debate Ended ---")
-                break
+                self.round_count += 1
+
+        # Closing statements
+        print("\n--- Closing Statements ---")
+        for philosopher in self.philosophers:
+            philosopher.set_phase("closing")
+            # Combine arguments from all opponents
+            opponent_arguments = "\n".join(
+                f"{opponent_name}: {self.last_arguments[opponent_name]}" for opponent_name in selected_philosopher.opponents
+            )
+            closing_statement = philosopher.generate_argument(opponents_argument = opponent_arguments)
+            self.transcript.append(f"{philosopher.name} (Closing): {closing_statement}\n")
+            print(f"{philosopher.name} - Closing Statement:", closing_statement)
+
+        print("\n--- Debate Ended ---")
 
         # Print the full transcript
         print("\n--- Full Debate Transcript ---")
