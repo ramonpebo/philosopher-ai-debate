@@ -43,6 +43,7 @@ class ModeratorAgent:
                 "Do NOT choose the same philosopher who just spoke. "
                 "Respond ONLY in JSON with one field: 'action'. "
                 "The value of 'action' must be in the format 'ask_philosopher_<name>'.\n\n"
+                "Use the exact name provided in the list (e.g., 'Plato', not 'plato' or 'Platon').\n\n"
             )
         )
 
