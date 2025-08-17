@@ -3,6 +3,10 @@ from pydantic_ai import Agent
 from pydantic_ai.exceptions import UnexpectedModelBehavior
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
+import logging
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 class PhilosopherResponse(BaseModel):
     argument: str
@@ -65,15 +69,29 @@ class PhilosopherAgent:
 
     # Generate argument for the current phase
     def generate_argument(self, opponents_argument: str = "") -> str:
+        """Generates an argument based on the current phase and opponent's argument."""
+
         if self.agent is None:
             raise RuntimeError("Agent not initialized for phase. Call set_phase first.")
 
-        # Build prompt including transcript and opponent argument for rebuttal/closing
         prompt = self.build_prompt(self.phase, opponents_argument)
-        try:
-            response = self.agent.run_sync(prompt)
-            return response.output.argument
-        except UnexpectedModelBehavior as e:
-            print(f"{self.name} invalid output in phase '{self.phase}'. Raw response:")
-            print(e)
-            raise
+        max_retries = 3
+
+        # Retry logic to handle unexpected model behavior
+        for attempt in range(max_retries):
+            try:
+                response = self.agent.run_sync(prompt)
+                # If a valid response is received, return it immediately
+                return response.output.argument
+            except UnexpectedModelBehavior as e:
+                logger.warning(f"{self.name} invalid output in phase '{self.phase}' on attempt {attempt + 1}. Retrying...")
+                continue  # Go to the next iteration of the loop
+            except Exception as e:
+                # Handle other unexpected errors
+                logger.error(f"An unexpected error occurred for {self.name} on attempt {attempt + 1}: {e}. Retrying...")
+                continue # Go to the next iteration of the loop
+
+        # If the loop completes without a valid response (all retries failed),
+        # return a fallback message.
+        logger.error(f"All {max_retries} attempts failed for {self.name}. Returning fallback message.")
+        return f"[{self.name} failed to generate a valid argument after multiple attempts and must pass this turn.]"
